@@ -10,8 +10,10 @@ import ItemListContainer from './components/ItemListContainer.jsx';
 import LearningPaths from './components/LearningPaths.jsx';
 import Login from './components/Login.jsx';
 import NavBar from './components/NavBar.jsx';
+import MyCourses from './pages/MyCourses.jsx';
 import Register from './components/Register.jsx';
-import StoreAssistant from './components/StoreAssistant.jsx';
+import OrientationChatDrawer from './components/OrientationChatDrawer.jsx';
+import { PreferencesProvider } from './components/PreferencesContext.jsx';
 import { AuthProvider, ProtectedRoute, useAuth } from './components/AuthContext.jsx';
 import logo from './img/logo.jpg';
 import './App.css';
@@ -43,9 +45,10 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <CartProvider>
-          <NavBar url={logo} />
-          <Routes>
+        <PreferencesProvider>
+          <CartProvider>
+            <NavBar url={logo} />
+            <Routes>
             <Route
               path="/"
               element={<ItemListContainer greeting="Te presentamos nuestros cursos:" />}
@@ -72,10 +75,7 @@ function App() {
               path="/mis-cursos"
               element={
                 <ProtectedRoute>
-                  <AccountPage
-                    title="Mis cursos"
-                    description="Tu biblioteca aparecerá aquí."
-                  />
+                  <MyCourses />
                 </ProtectedRoute>
               }
             />
@@ -98,10 +98,11 @@ function App() {
                 </h1>
               }
             />
-          </Routes>
-          <CartDrawer />
-          <StoreAssistant />
-        </CartProvider>
+            </Routes>
+            <CartDrawer />
+            <OrientationChatDrawer />
+          </CartProvider>
+        </PreferencesProvider>
       </AuthProvider>
     </BrowserRouter>
   );

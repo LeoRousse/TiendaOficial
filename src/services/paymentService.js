@@ -41,7 +41,9 @@ async function requestApi(path, options = {}) {
 
   if (!response.ok) {
     const apiError = new Error(
-      payload?.message || `No se pudo completar la solicitud (${response.status}).`,
+      response.status === 503
+        ? 'Pasarela en modo configuración. Inténtalo más tarde o contacta al administrador.'
+        : payload?.message || `No se pudo completar la solicitud (${response.status}).`,
     );
     apiError.status = response.status;
     apiError.code = payload?.code;
@@ -74,7 +76,11 @@ export async function createPendingOrder(cartItems, userId, currency, idempotenc
   });
 
   if (!order.orderId || order.status !== 'pending') {
-    throw new Error('El servicio no confirmó una orden pendiente válida.');
+    const invalidOrder = new Error(order.status === 'expired'
+      ? 'La orden venció. Intenta iniciar el pago nuevamente.'
+      : 'El servicio no confirmó una orden pendiente válida.');
+    invalidOrder.status = order.status === 'expired' ? 409 : 502;
+    throw invalidOrder;
   }
 
   return order;

@@ -1,7 +1,7 @@
 import Item from './Item.jsx';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 
-function ItemList({ products }) {
+function ItemList({ products, ownedCourseIds = [] }) {
   const shouldReduceMotion = useReducedMotion();
 
   return (
@@ -18,7 +18,7 @@ function ItemList({ products }) {
               exit={{ opacity: 0, scale: shouldReduceMotion ? 1 : 0.97 }}
               transition={{ duration: shouldReduceMotion ? 0 : 0.2, layout: { duration: 0.24 } }}
             >
-              <Item {...product} />
+              <Item {...product} isOwned={ownedCourseIds.includes(product.id)} />
             </motion.div>
           ))}
         </AnimatePresence>

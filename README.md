@@ -4,17 +4,12 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
 
 ## Copiloto de orientación
 
-El chat usa Firebase AI Logic con Gemini y fundamenta sus respuestas con los cursos, temarios y rutas de aprendizaje de Firestore. No requiere una API key de Gemini en el navegador.
+El chat consulta `POST /api/assistant/recommend`. El backend usa Gemini con el catálogo, los temarios y las rutas de aprendizaje del servidor como contexto, y valida los IDs recomendados antes de responder. La clave `GEMINI_API_KEY` se configura exclusivamente en `server/.env`; nunca se expone al navegador.
 
-Para habilitarlo:
+Para habilitar el copiloto:
 
-1. Ejecuta `npx -y firebase-tools@latest init ailogic` en este directorio y selecciona la app web `ReactAppQuiroga` para completar la provisión de Firebase AI Logic. El proveedor Gemini Developer API ya está habilitado en el proyecto `proyectoreactquiroga`.
-2. Crea una clave score-based de reCAPTCHA Enterprise y registra la aplicación web en App Check con ese proveedor. Para desarrollo local, usa una clave separada que permita `localhost`; no agregues `localhost` a la clave de producción.
-3. Copia `.env.example` a `.env.local` y define `REACT_APP_FIREBASE_APP_CHECK_SITE_KEY` con la clave de sitio.
-4. Solo para desarrollo local, define `REACT_APP_APPCHECK_DEBUG=true`, inicia la app y registra el token que Firebase imprime en la consola del navegador en Firebase Console > App Check > Apps. No publiques ni compartas ese token; en producción debe permanecer desactivado.
-5. Reinicia `npm start` después de cambiar las variables.
-
-Si AI Logic o App Check no están configurados, el copiloto informa que no está habilitado en lugar de simular una respuesta.
+1. Configura `GEMINI_API_KEY` en `server/.env` a partir de `server/.env.example`.
+2. Reinicia el servidor Express. Si no hay clave configurada, la API responde `503` explícitamente y el chat presenta el error.
 
 ## Infraestructura de checkout y pagos
 
@@ -23,9 +18,9 @@ El frontend prepara el flujo de órdenes y redirección; **no procesa pagos por 
 Para iniciar el backend local:
 
 1. Ejecuta `npm install --prefix server`.
-2. Copia `server/.env.example` a `server/.env`, configura las credenciales de Firebase Admin y las claves de prueba de las pasarelas. Nunca guardes `server/.env` en Git.
-3. Ejecuta `npm run check:env --prefix server` y después `npm run start --prefix server`; el validador revisa las credenciales sandbox antes de que la API escuche en `http://localhost:4000`.
-4. Sigue [server/TESTING_SANDBOX.md](./server/TESTING_SANDBOX.md) para túneles y pruebas E2E; ejecuta `npm test --prefix server` para la suite. La base SQLite persiste en `server/data/orders.sqlite`; el directorio se ignora en Git.
+2. Ejecuta `npm run setup:env --prefix server` para crear/configurar `server/.env` con el asistente; nunca guardes credenciales reales en Git.
+3. Ejecuta `npm run check:env --prefix server` para revisar la configuración y luego `npm run start --prefix server` para iniciar la API en `http://localhost:4000`. Si faltan credenciales de una pasarela, el API responde `503` de forma controlada y la interfaz indica que está en modo configuración.
+4. Sigue [server/TESTING_SANDBOX.md](./server/TESTING_SANDBOX.md) para instalar túneles y probar E2E. Ejecuta `npm test --prefix server` para la suite y `npm run test:smoke --prefix server` con el backend activo. La base SQLite persiste en `server/data/orders.sqlite`; el directorio se ignora en Git.
 
 Configura un URL HTTPS público para `SERVER_PUBLIC_URL` y registra `{SERVER_PUBLIC_URL}/api/webhooks/mercadopago` en Mercado Pago y `/api/webhooks/stripe` en Stripe. Para desarrollo local, usa un túnel HTTPS. Los secretos de Admin SDK, Mercado Pago y Stripe pertenecen únicamente al backend. Configura `ARS_EXCHANGE_RATE` con la tasa que tu operación realmente aplicará y revisa los precios fuente en `server/src/data/catalog.js` antes de habilitar cobros.
 
@@ -40,8 +35,11 @@ El backend debe autenticar el encabezado `Authorization: Bearer <Firebase ID tok
 
 1. `POST /api/orders` recibe `{ "courseIds": ["..."], "userId": "...", "currency": "USD" | "ARS" }` y `Idempotency-Key`. Devuelve `{ "orderId", "status", "totalAmount", "currency", "items" }`; la misma clave y payload devuelve la misma orden. Reutilizar la clave con otro carrito devuelve `409`.
 2. `POST /api/payments/mercadopago/checkout` y `POST /api/payments/stripe/checkout` reciben `{ "orderId", "successUrl", "cancelUrl" }` y `Idempotency-Key`. Las URLs aportadas por el cliente se ignoran: el servidor usa `CLIENT_URL`. También se aceptan los aliases `/api/payments/mercadopago` y `/api/payments/stripe`. Mercado Pago devuelve `init_point`; Stripe devuelve `url`.
-3. `GET /api/orders/:orderId/status` devuelve `{ "orderId", "status", "unlockedCourseIds", "updatedAt" }`. Solo un webhook verificado puede desbloquear cursos y cambiar el estado a `paid`.
+3. `GET /api/orders/:orderId/status` devuelve el estado y, si el pago fue confirmado, incluye recibo (método, fecha, moneda e items) y `unlockedCourseIds`. Solo un webhook verificado puede desbloquear cursos y cambiar el estado a `paid`.
+4. Las órdenes pendientes vencen luego de 24 horas. Crear una orden para cursos que el usuario ya adquirió devuelve `409` con `ownedCourseIds`; las compras nuevas se verifican transaccionalmente en SQLite.
 4. Si Stripe retorna con `session_id`, `GET /api/payments/stripe/sessions/:session_id/order` devuelve `{ "orderId": "..." }`.
+5. `GET /api/me/courses` requiere un ID token de Firebase y devuelve solo los cursos pagados del usuario autenticado, con lecciones y progreso persistente. `PATCH /api/me/courses/:courseId/progress` guarda el estado de una lección y valida que el usuario haya comprado el curso.
+6. `POST /api/assistant/recommend` recibe `{ "message", "history" }` y devuelve `{ "answer", "recommendedCourseIds" }`. El endpoint aplica límites de frecuencia y de tamaño para las consultas.
 
 El hook de sincronización persiste y combina el carrito de invitado con el carrito guardado para la cuenta en el mismo navegador; para sincronización entre dispositivos hace falta un endpoint autenticado del backend. La ruta `/checkout/success` consulta el estado cada 3 segundos, con un máximo de 60 segundos, y libera el acceso solo al recibir `paid`.
 

@@ -1,16 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import CartWidget from './CartWidget';
-import { AiOutlineMenuUnfold, AiFillHome } from 'react-icons/ai';
+import { AiFillHome, AiOutlineSetting } from 'react-icons/ai';
 import { VscGithub } from 'react-icons/vsc';
 import { TiSocialLinkedinCircular } from 'react-icons/ti';
 import { SiUpwork } from 'react-icons/si';
 import { useAuth } from './AuthContext.jsx';
+import { getMyCourses } from '../services/apiClient.js';
+import { usePreferences } from './PreferencesContext.jsx';
 
 const NavBar = ({ url }) => {
   const [isActive, setIsActive] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const { user, logout } = useAuth();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { user, logout, purchasedCourses } = useAuth();
+  const { theme, currency, reduceMotion, updatePreference } = usePreferences();
+  const [purchasedCount, setPurchasedCount] = useState(purchasedCourses.length);
   const initials = user?.displayName
     ? user.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()
     : user?.email?.[0]?.toUpperCase() || "U";
@@ -19,13 +24,27 @@ const NavBar = ({ url }) => {
     setIsActive(!isActive);
   };
 
+  useEffect(() => {
+    setPurchasedCount(purchasedCourses.length);
+    if (!user) return undefined;
+    const controller = new AbortController();
+    getMyCourses({ signal: controller.signal })
+      .then(({ courses = [] }) => setPurchasedCount(courses.length))
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error('No se pudo actualizar el contador de cursos', error);
+        }
+      });
+    return () => controller.abort();
+  }, [purchasedCourses.length, user]);
+
   return (
     <nav className="navbar is-spaced has-shadow" role="navigation" aria-label="main navigation">
       <div className="navbar-brand">
-        <button type="button" className="navbar-item button is-white" onClick={toggleMenu} aria-label="Abrir navegación">
-          <AiOutlineMenuUnfold size={23} />
-          <img src={url} alt="Logo" style={{ marginLeft: "10px", height: "40px" }} />
-        </button>
+        <Link className="navbar-item store-brand" to="/" aria-label="Tienda Quiroga, inicio">
+          <img src={url} alt="Tienda Quiroga" />
+          <strong>Tienda Quiroga</strong>
+        </Link>
         <button type="button"
           className={`navbar-burger ${isActive ? "is-active" : ""}`}
           aria-label="menu"
@@ -53,9 +72,12 @@ const NavBar = ({ url }) => {
             Test de diagnóstico
           </Link>
 
-          <div className="navbar-item" onClick={() => setIsActive(false)}>
-            <CartWidget />
-          </div>
+          {user && (
+            <Link className="navbar-item my-courses-nav-link" to="/mis-cursos" onClick={() => setIsActive(false)}>
+              Mis Cursos
+              <span className="my-courses-nav-count">{purchasedCount}</span>
+            </Link>
+          )}
 
           <a className="navbar-item" href="https://github.com/LeoRousse" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
             <VscGithub size={20} className="icon-hover" />
@@ -89,9 +111,7 @@ const NavBar = ({ url }) => {
         <div className="navbar-end">
           <div className="navbar-item">
             <div className="buttons">
-              <Link className="button is-primary is-rounded" to="/cart">
-                <strong>Ver carrito</strong>
-              </Link>
+              <CartWidget />
               {user ? (
                 <div className="user-menu">
                   <button
@@ -110,6 +130,52 @@ const NavBar = ({ url }) => {
                     <div className="user-dropdown" role="menu">
                       <Link to="/mis-cursos" role="menuitem" onClick={() => setProfileOpen(false)}>Mis cursos</Link>
                       <Link to="/perfil" role="menuitem" onClick={() => setProfileOpen(false)}>Mi perfil</Link>
+                      <button
+                        type="button"
+                        className="user-settings-trigger"
+                        onClick={() => setSettingsOpen((open) => !open)}
+                        aria-expanded={settingsOpen}
+                        aria-controls="interface-preferences"
+                      >
+                        <AiOutlineSetting aria-hidden="true" />
+                        Configuración
+                      </button>
+                      {settingsOpen && (
+                        <section
+                          id="interface-preferences"
+                          className="interface-preferences"
+                          aria-label="Preferencias de interfaz"
+                        >
+                          <label>
+                            Tema visual
+                            <select
+                              value={theme}
+                              onChange={(event) => updatePreference('theme', event.target.value)}
+                            >
+                              <option value="light">Modo claro</option>
+                              <option value="dark">Modo oscuro</option>
+                            </select>
+                          </label>
+                          <label>
+                            Moneda destacada
+                            <select
+                              value={currency}
+                              onChange={(event) => updatePreference('currency', event.target.value)}
+                            >
+                              <option value="USD">USD</option>
+                              <option value="ARS">ARS</option>
+                            </select>
+                          </label>
+                          <label className="interface-preferences-toggle">
+                            <input
+                              type="checkbox"
+                              checked={reduceMotion}
+                              onChange={(event) => updatePreference('reduceMotion', event.target.checked)}
+                            />
+                            Reducir animaciones
+                          </label>
+                        </section>
+                      )}
                       <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); logout(); }}>
                         Cerrar sesión
                       </button>

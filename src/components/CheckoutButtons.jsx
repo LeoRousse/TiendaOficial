@@ -12,7 +12,7 @@ import {
 
 function CheckoutButtons({ compact = false }) {
   const { user } = useAuth();
-  const { cart, subtotalUsd, totalQuantity } = useCart();
+  const { cart, total, totalQuantity } = useCart();
   const [loadingProvider, setLoadingProvider] = useState('');
   const [error, setError] = useState('');
   const isSubmittingRef = useRef(false);
@@ -46,6 +46,7 @@ function CheckoutButtons({ compact = false }) {
       }
     } catch (requestError) {
       console.error(`No se pudo iniciar el checkout con ${provider}`, requestError);
+      if (requestError.status === 409) delete pendingOrdersRef.current[currency];
       setError(requestError.message || 'No pudimos iniciar el pago. Intenta nuevamente.');
     } finally {
       isSubmittingRef.current = false;
@@ -76,7 +77,7 @@ function CheckoutButtons({ compact = false }) {
           : <AiOutlineCreditCard />}
         <span>
           <strong>{loadingProvider === 'mercadopago' ? 'Preparando orden…' : 'Pagar con Mercado Pago'}</strong>
-          <small>ARS · estimado ${getEstimatedArsAmount(subtotalUsd).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</small>
+          <small>ARS · estimado ${getEstimatedArsAmount(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</small>
         </span>
       </button>
       <button
@@ -90,7 +91,7 @@ function CheckoutButtons({ compact = false }) {
           : <AiOutlineCreditCard />}
         <span>
           <strong>{loadingProvider === 'stripe' ? 'Preparando orden…' : 'Pagar con Stripe'}</strong>
-          <small>USD · ${Number(subtotalUsd).toLocaleString('en-US', { minimumFractionDigits: 2 })}</small>
+          <small>USD · ${Number(total).toLocaleString('en-US', { minimumFractionDigits: 2 })}</small>
         </span>
       </button>
       <p className="checkout-payment-note">

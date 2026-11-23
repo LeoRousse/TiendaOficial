@@ -1,6 +1,3 @@
-import { catalogById } from '../data/catalog.js';
-import { getCoursePriceMinor } from './orderController.js';
-
 function createOrderUrls(clientUrl, orderId) {
   const successUrl = new URL('/checkout/success', `${clientUrl}/`);
   successUrl.searchParams.set('orderId', orderId);
@@ -24,7 +21,6 @@ export function createPaymentController({
   stripeClient,
   clientUrl,
   serverPublicUrl,
-  arsPerUsd,
 }) {
   function getOwnedPendingOrder(req, res, currency) {
     const { orderId } = req.body || {};
@@ -45,7 +41,35 @@ export function createPaymentController({
       res.status(409).json({ message: `Esta orden debe pagarse en ${order.currency}.` });
       return null;
     }
+    const alreadyOwnedIds = store.getPaidCourseIds(req.user.uid)
+      .filter((courseId) => order.courseIds.includes(courseId));
+    if (alreadyOwnedIds.length > 0) {
+      res.status(409).json({
+        message: 'Ya tienes acceso a uno o más cursos de esta orden. No se puede iniciar un pago duplicado.',
+        code: 'COURSE_ALREADY_OWNED',
+        ownedCourseIds: alreadyOwnedIds,
+      });
+      return null;
+    }
     return order;
+  }
+
+  function requireMercadoPagoConfigured(_req, res, next) {
+    if (!mercadoPagoClient) {
+      return res.status(503).json({
+        message: 'Mercado Pago está en modo configuración. Completa las credenciales sandbox del servidor.',
+      });
+    }
+    return next();
+  }
+
+  function requireStripeConfigured(_req, res, next) {
+    if (!stripeClient) {
+      return res.status(503).json({
+        message: 'Stripe está en modo configuración. Completa las credenciales sandbox del servidor.',
+      });
+    }
+    return next();
   }
 
   async function createMercadoPagoCheckout(req, res, next) {
@@ -54,14 +78,13 @@ export function createPaymentController({
       const order = getOwnedPendingOrder(req, res, 'ARS');
       if (!order) return;
 
-      const items = order.courseIds.map((id) => {
-        const course = catalogById.get(id);
+      const items = order.items.map((item) => {
         return {
-          id: course.id,
-          title: course.name,
+          id: item.id,
+          title: item.name,
           quantity: 1,
           currency_id: 'ARS',
-          unit_price: getCoursePriceMinor(course, 'ARS', arsPerUsd) / 100,
+          unit_price: item.price,
         };
       });
       const { successUrl, cancelUrl } = createOrderUrls(clientUrl, order.orderId);
@@ -142,6 +165,8 @@ export function createPaymentController({
 
   return {
     authMiddleware,
+    requireMercadoPagoConfigured,
+    requireStripeConfigured,
     createMercadoPagoCheckout,
     createStripeCheckout,
     resolveStripeSession,

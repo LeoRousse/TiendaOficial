@@ -1,11 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { NavLink, useParams } from 'react-router-dom';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig.js';
 import ItemList from './ItemList.jsx';
 import { getDemoProducts } from '../data/demoProducts.js';
-import { AiOutlineSearch } from 'react-icons/ai';
+import { AiOutlineClose, AiOutlineSearch } from 'react-icons/ai';
 import { motion } from 'framer-motion';
+import { useAuth } from './AuthContext.jsx';
+import { getMyCourses } from '../services/apiClient.js';
+import { withCourseMetadata } from '../data/courseMetadata.js';
+import { getEstimatedArsAmount } from '../services/paymentService.js';
+import { usePreferences } from './PreferencesContext.jsx';
 
 function CatalogSkeleton() {
   return (
@@ -33,11 +38,55 @@ function ItemListContainer({ greeting }) {
   const [ loading, setLoading ] = useState(true);
   const [ error, setError ] = useState("");
   const [ search, setSearch ] = useState("");
+  const [sortOrder, setSortOrder] = useState('featured');
+  const [ownedCourseIds, setOwnedCourseIds] = useState([]);
+  const searchInputRef = useRef(null);
+  const { user, purchasedCourses } = useAuth();
+  const { currency } = usePreferences();
 
   const { categoryId } = useParams(); 
-  const filteredProducts = products.filter((product) => (
+  const filteredProducts = useMemo(() => products.filter((product) => (
     product.name?.toLowerCase().includes(search.toLowerCase())
-  ));
+  )).sort((first, second) => {
+    const firstPrice = currency === 'ARS' ? getEstimatedArsAmount(Number(first.price)) : Number(first.price);
+    const secondPrice = currency === 'ARS' ? getEstimatedArsAmount(Number(second.price)) : Number(second.price);
+    if (sortOrder === 'price-asc') return firstPrice - secondPrice;
+    if (sortOrder === 'price-desc') return secondPrice - firstPrice;
+    return Number(second.featured ?? second.rating ?? 0) - Number(first.featured ?? first.rating ?? 0);
+  }), [products, search, sortOrder, currency]);
+
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleShortcut);
+    return () => document.removeEventListener('keydown', handleShortcut);
+  }, []);
+
+  useEffect(() => {
+    setOwnedCourseIds(purchasedCourses);
+  }, [purchasedCourses]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    let active = true;
+    getMyCourses()
+      .then(({ courses: ownedCourses = [] }) => {
+        if (active) setOwnedCourseIds(ownedCourses.map((course) => course.id));
+      })
+      .catch((requestError) => {
+        if (requestError.status !== 401 && requestError.status !== 403) {
+          console.error('No se pudieron consultar tus cursos adquiridos', requestError);
+        }
+      });
+    return () => { active = false; };
+  }, [user]);
 
   useEffect(() => {
     setLoading(true);
@@ -49,13 +98,13 @@ function ItemListContainer({ greeting }) {
 
     getDocs(q)
       .then((response) => {
-        const data = response.docs.map((doc) => ({ id: doc.id, ...doc.data()}));
+        const data = response.docs.map((doc) => withCourseMetadata({ id: doc.id, ...doc.data()}));
         setProducts(data);
       })
 
       .catch((error) => {
         if (error.code === "permission-denied") {
-          const demoProducts = getDemoProducts();
+          const demoProducts = getDemoProducts().map(withCourseMetadata);
           setProducts(categoryId
             ? demoProducts.filter((product) => product.category === categoryId)
             : demoProducts);
@@ -90,11 +139,12 @@ function ItemListContainer({ greeting }) {
         </NavLink>
       </div>
       <div className="field catalog-search">
-        <div className="control has-icons-left">
+        <div className="control has-icons-left catalog-search-field">
           <span className="icon is-left catalog-search-icon" aria-hidden="true">
             <AiOutlineSearch />
           </span>
           <input
+            ref={searchInputRef}
             className="input is-rounded"
             type="search"
             placeholder="Buscar curso por nombre..."
@@ -102,7 +152,30 @@ function ItemListContainer({ greeting }) {
             onChange={({ target }) => setSearch(target.value)}
             aria-label="Buscar cursos por nombre"
           />
+          {search && (
+            <button
+              type="button"
+              className="catalog-search-clear"
+              aria-label="Limpiar búsqueda"
+              onClick={() => setSearch('')}
+            >
+              <AiOutlineClose />
+            </button>
+          )}
         </div>
+        <label className="catalog-sort-label">
+          <span>Ordenar por</span>
+          <select
+            className="catalog-sort-select"
+            value={sortOrder}
+            onChange={(event) => setSortOrder(event.target.value)}
+            aria-label="Ordenar cursos"
+          >
+            <option value="featured">Destacados</option>
+            <option value="price-asc">Menor precio</option>
+            <option value="price-desc">Mayor precio</option>
+          </select>
+        </label>
       </div>
       {loading ? (
         <CatalogSkeleton />
@@ -115,10 +188,23 @@ function ItemListContainer({ greeting }) {
           transition={{ duration: 0.2 }}
         >
           {filteredProducts.length > 0 ? (
-            <ItemList products={filteredProducts} />
+            <ItemList products={filteredProducts} ownedCourseIds={ownedCourseIds} />
           ) : (
             <div className="notification is-warning has-text-centered">
-              <p>No se encontraron productos de esta categoría.</p>
+              {search.trim() ? (
+                <>
+                  <p>No encontramos cursos para “{search}”.</p>
+                  <button
+                    type="button"
+                    className="button is-primary mt-3"
+                    onClick={() => window.dispatchEvent(new CustomEvent('orientation:ask', {
+                      detail: { message: `No encontré un curso llamado "${search}". ¿Qué alternativa me recomiendas?` },
+                    }))}
+                  >
+                    Consultar con el asistente IA sobre “{search}”
+                  </button>
+                </>
+              ) : <p>No hay cursos disponibles en esta categoría.</p>}
             </div>
           )}
         </motion.div>

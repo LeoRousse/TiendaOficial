@@ -8,10 +8,16 @@ import { config } from './config/env.js';
 import { createOrderController } from './controllers/orderController.js';
 import { createPaymentController } from './controllers/paymentController.js';
 import { createWebhookController } from './controllers/webhookController.js';
+import { createMeController } from './controllers/meController.js';
+import { createAssistantController } from './controllers/assistantController.js';
 import { createFirebaseAuthMiddleware } from './middleware/firebaseAuth.js';
 import { createApiRoutes } from './routes/apiRoutes.js';
+import { createMeRoutes } from './routes/me.js';
+import { createAssistantRoutes } from './routes/assistant.js';
 import { createOrderFulfillment } from './services/fulfillOrder.js';
 import { createOrderStore } from './services/orderStore.js';
+import { createCourseAccessService } from './services/courseAccessService.js';
+import { createAssistantAdvisor } from './services/assistantAdvisor.js';
 
 function createMercadoPagoClient(accessToken) {
   if (!accessToken) return null;
@@ -47,7 +53,6 @@ export function createApp(options = {}) {
     stripeClient,
     clientUrl: runtimeConfig.clientUrl,
     serverPublicUrl: runtimeConfig.serverPublicUrl,
-    arsPerUsd: runtimeConfig.arsPerUsd,
   });
   const webhooks = createWebhookController({
     store,
@@ -57,13 +62,22 @@ export function createApp(options = {}) {
     mercadoPagoClient,
     mercadoPagoWebhookSecret: runtimeConfig.mpWebhookSecret,
   });
+  const meController = createMeController({
+    courseAccessService: createCourseAccessService({ store, arsPerUsd: runtimeConfig.arsPerUsd }),
+  });
+  const assistantController = createAssistantController({
+    assistantAdvisor: options.assistantAdvisor || createAssistantAdvisor({
+      apiKey: runtimeConfig.geminiApiKey,
+      generateContent: options.generateAssistantContent,
+    }),
+  });
 
   const app = express();
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors({
     origin: runtimeConfig.clientUrl,
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', 'Stripe-Signature', 'X-Signature', 'X-Request-Id'],
   }));
   const checkoutLimiter = rateLimit({
@@ -72,6 +86,13 @@ export function createApp(options = {}) {
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     message: { message: 'Demasiadas solicitudes de checkout. Intenta nuevamente más tarde.' },
+  });
+  const assistantLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: 20,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { message: 'Demasiadas consultas al asistente. Intenta nuevamente más tarde.' },
   });
   app.use('/api/orders', checkoutLimiter);
   app.use('/api/payments', checkoutLimiter);
@@ -85,6 +106,8 @@ export function createApp(options = {}) {
 
   app.use(express.json({ limit: '32kb' }));
   app.post('/api/webhooks/mercadopago', webhooks.mercadoPagoWebhook);
+  app.use('/api', createMeRoutes({ meController, authMiddleware }));
+  app.use('/api', createAssistantRoutes({ assistantController, limiter: assistantLimiter }));
   app.use('/api', createApiRoutes({ orderController, paymentController }));
 
   app.use((_req, res) => res.status(404).json({ message: 'Ruta no encontrada.' }));
@@ -95,6 +118,8 @@ export function createApp(options = {}) {
     if (status >= 500) console.error('Error no controlado en API', error);
     return res.status(status).json({
       message: status === 500 ? 'Ocurrió un error interno.' : error.message,
+      ...(error.code ? { code: error.code } : {}),
+      ...(error.ownedCourseIds ? { ownedCourseIds: error.ownedCourseIds } : {}),
     });
   });
 

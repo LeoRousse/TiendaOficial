@@ -61,4 +61,18 @@ describe('createPendingOrder', () => {
     await expect(createPendingOrder([{ id: 'course-a' }], 'user-1', 'USD'))
       .rejects.toThrow('El servicio no confirmó una orden pendiente válida');
   });
+
+  it('presents missing payment provider configuration as a friendly 503', async () => {
+    global.fetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ message: 'Stripe está en modo configuración.' }),
+    });
+
+    await expect(createPendingOrder([{ id: 'course-a' }], 'user-1', 'USD'))
+      .rejects.toMatchObject({
+        message: 'Pasarela en modo configuración. Inténtalo más tarde o contacta al administrador.',
+        status: 503,
+      });
+  });
 });

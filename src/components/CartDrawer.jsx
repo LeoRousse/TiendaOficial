@@ -7,8 +7,9 @@ import { db } from '../firebase/firebaseConfig.js';
 import { getDemoProducts } from '../data/demoProducts.js';
 import CheckoutButtons from './CheckoutButtons.jsx';
 import { getEstimatedArsAmount } from '../services/paymentService.js';
+import { usePreferences } from './PreferencesContext.jsx';
 
-const DISCOUNT_PERCENT = 20;
+const DISCOUNT_PERCENT = 15;
 
 const complementaryCourseIds = {
   'S9EVaISnr66gUfJO61mx': 'ZWk64kAGeSA4TMCB7yIa',
@@ -16,10 +17,6 @@ const complementaryCourseIds = {
   'gVdLhdDDS7Z9fMat6oqK': 'ZWk64kAGeSA4TMCB7yIa',
   'SrQqeMtpIr5aOrZieV2V': 'Bvx7NxtkST5tt3swtRta',
   'Bvx7NxtkST5tt3swtRta': 'SrQqeMtpIr5aOrZieV2V',
-  'demo-react': 'demo-ui',
-  'demo-javascript': 'demo-react',
-  'demo-ui': 'demo-react',
-  'demo-figma': 'demo-react',
 };
 
 function chooseComplementaryCourse(addedCourse, catalog, cart) {
@@ -62,7 +59,9 @@ function CartDrawer() {
     isCartDrawerOpen,
     total,
     totalQuantity,
+    totalSavings,
   } = useContext(CartContext);
+  const { currency } = usePreferences();
   const [catalog, setCatalog] = useState([]);
   const [catalogState, setCatalogState] = useState('idle');
   const [upsellStatus, setUpsellStatus] = useState('');
@@ -120,15 +119,18 @@ function CartDrawer() {
   const recommendation = catalogState === 'ready'
     ? chooseComplementaryCourse(drawerItem, catalog, cart)
     : null;
-  const discountedPrice = recommendation
-    ? Number((Number(recommendation.price) * (1 - DISCOUNT_PERCENT / 100)).toFixed(2))
-    : 0;
+  const formatMoney = (amount, moneyCurrency) => new Intl.NumberFormat(
+    moneyCurrency === 'USD' ? 'en-US' : 'es-AR',
+    { style: 'currency', currency: moneyCurrency, maximumFractionDigits: moneyCurrency === 'USD' ? 2 : 0 },
+  ).format(amount);
+  const primaryTotal = currency === 'ARS' ? getEstimatedArsAmount(total) : total;
+  const secondaryTotal = currency === 'ARS' ? total : getEstimatedArsAmount(total);
 
   const handleAddRecommendation = () => {
     if (!recommendation) return;
-    const added = addRecommendedItem(recommendation, DISCOUNT_PERCENT);
+    const added = addRecommendedItem(recommendation);
     setUpsellStatus(added
-      ? `${recommendation.name} se agregó con ${DISCOUNT_PERCENT}% de descuento.`
+      ? `${recommendation.name} se agregó. El 15% de descuento se aplicó al carrito completo.`
       : 'Este complemento ya está en tu carrito o no tiene cupos disponibles.');
     if (added) setUpsellAdded(true);
   };
@@ -164,16 +166,27 @@ function CartDrawer() {
         </header>
 
         <div className="cart-drawer-content">
+          <section className="cart-bundle-progress" aria-label="Descuento por paquete">
+            <div className="cart-bundle-progress-copy">
+              <strong>{cart.length >= 2
+                ? '¡Desbloqueaste 15% OFF por paquete!'
+                : '¡Sumá 1 curso más y obtené 15% OFF en todo tu carrito!'}</strong>
+              <span>{cart.length >= 2
+                ? `Ahorro: ${formatMoney(currency === 'ARS' ? getEstimatedArsAmount(totalSavings) : totalSavings, currency)} · ${formatMoney(currency === 'ARS' ? totalSavings : getEstimatedArsAmount(totalSavings), currency === 'ARS' ? 'USD' : 'ARS')}`
+                : 'El descuento se aplica automáticamente al pagar.'}</span>
+            </div>
+            <div className="cart-bundle-progress-track" role="progressbar" aria-valuenow={Math.min(cart.length, 2)} aria-valuemin="0" aria-valuemax="2">
+              <span style={{ width: `${cart.length >= 2 ? 100 : cart.length * 50}%` }} />
+            </div>
+          </section>
           <div className="cart-drawer-confirmation" role="status">
             <span className="cart-drawer-check" aria-hidden="true">✓</span>
             <div>
               <strong>¡Listo! Ya está en tu carrito.</strong>
               <span>
-                {totalQuantity} {totalQuantity === 1 ? 'curso' : 'cursos'} · ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+                {totalQuantity} {totalQuantity === 1 ? 'curso' : 'cursos'} · {formatMoney(primaryTotal, currency)}
               </span>
-              <span>
-                Estimado ${getEstimatedArsAmount(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} ARS
-              </span>
+              <span>{formatMoney(secondaryTotal, currency === 'ARS' ? 'USD' : 'ARS')} de referencia</span>
             </div>
           </div>
 
@@ -192,15 +205,14 @@ function CartDrawer() {
               <h3 id="cart-cross-sell-title">Completa tu aprendizaje</h3>
               <p>
                 Combina <strong>{drawerItem.name}</strong> con{' '}
-                <strong>{recommendation.name}</strong> y obtén {DISCOUNT_PERCENT}% OFF en el complemento.
+                <strong>{recommendation.name}</strong> y obtén {DISCOUNT_PERCENT}% OFF en todo el carrito.
               </p>
               {recommendation.img && (
                 <img src={recommendation.img} alt="" className="cart-cross-sell-image" />
               )}
               <div className="cart-cross-sell-price">
-                <del>${Number(recommendation.price).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</del>
-                <strong>${discountedPrice.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</strong>
-                <span>{DISCOUNT_PERCENT}% OFF</span>
+                <strong>{formatMoney(Number(recommendation.price), currency)}</strong>
+                <span>Descuento del carrito completo</span>
               </div>
               <button type="button" className="cart-cross-sell-add" onClick={handleAddRecommendation}>
                 <AiOutlineShoppingCart />
@@ -220,7 +232,7 @@ function CartDrawer() {
         <footer className="cart-drawer-footer">
           <CheckoutButtons compact />
           <Link className="cart-drawer-view-cart" to="/cart" onClick={closeCartDrawer}>
-            Ver carrito y ofertas
+            Ver carrito
           </Link>
           <button type="button" className="cart-drawer-continue" onClick={closeCartDrawer}>
             Seguir explorando

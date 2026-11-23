@@ -16,6 +16,20 @@ export function createOrderController({ store, authMiddleware, arsPerUsd }) {
   return {
     authMiddleware,
 
+    getCatalog(_req, res) {
+      const items = Array.from(catalogById.values(), (course) => ({
+        id: course.id,
+        name: course.name,
+        priceUsd: course.priceUsd,
+        priceArs: Math.round((course.priceUsd * arsPerUsd + Number.EPSILON) * 100) / 100,
+        durationHours: course.durationHours,
+        modulesCount: course.modulesCount,
+        rating: course.rating,
+        highlights: course.highlights,
+      }));
+      return res.json({ currencyExchangeRate: arsPerUsd, items });
+    },
+
     createOrder(req, res, next) {
       try {
         const { courseIds, userId, currency } = req.body || {};
@@ -46,19 +60,19 @@ export function createOrderController({ store, authMiddleware, arsPerUsd }) {
           name: course.name,
           price: getCoursePriceMinor(course, currency, arsPerUsd) / 100,
         }));
-        const totalAmount = items.reduce((total, item) => total + toMinorUnits(item.price), 0);
         const order = store.createOrGetOrder({
           userId,
           idempotencyKey,
           courseIds,
           items,
           currency,
-          totalAmount,
         });
 
         return res.status(201).json({
           orderId: order.orderId,
           status: order.status,
+          subtotalAmount: order.subtotalAmount / 100,
+          discountAmount: order.discountAmount / 100,
           totalAmount: order.totalAmount / 100,
           currency: order.currency,
           items: order.items,
@@ -78,6 +92,13 @@ export function createOrderController({ store, authMiddleware, arsPerUsd }) {
         status: order.status,
         unlockedCourseIds: order.status === 'paid' ? order.courseIds : [],
         updatedAt: order.updatedAt,
+        createdAt: order.createdAt,
+        provider: order.provider,
+        currency: order.currency,
+        subtotalAmount: order.subtotalAmount / 100,
+        discountAmount: order.discountAmount / 100,
+        totalAmount: order.totalAmount / 100,
+        items: order.items,
       });
     },
   };

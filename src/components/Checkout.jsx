@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useCart } from '../hooks/useCart.js';
 import { getEstimatedArsAmount } from '../services/paymentService.js';
 import CheckoutButtons from './CheckoutButtons.jsx';
+import BundleDiscountNotice from './BundleDiscountNotice.jsx';
 
 function Checkout() {
   const { cart, total, totalSavings, totalQuantity } = useCart();
@@ -29,14 +30,12 @@ function Checkout() {
       <div className="checkout-layout">
         <section className="checkout-order-summary" aria-labelledby="checkout-summary-title">
           <h2 id="checkout-summary-title">Resumen de tu orden</h2>
+          <BundleDiscountNotice courseCount={cart.length} savings={totalSavings} />
           <ul>
             {cart.map((item) => (
               <li key={item.id}>
                 <span>
                   <strong>{item.name}</strong>
-                  {item.discountPercent && (
-                    <small>{item.discountPercent}% de descuento aplicado</small>
-                  )}
                 </span>
                 <strong>${Number(item.price).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
               </li>
@@ -44,7 +43,7 @@ function Checkout() {
           </ul>
           {totalSavings > 0 && (
             <p className="checkout-savings">
-              Ahorro: ${totalSavings.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+              Ahorro del 15% por paquete: ${totalSavings.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
             </p>
           )}
           <div className="checkout-order-total">

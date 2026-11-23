@@ -4,15 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup:env": "node scripts/setupEnv.js",
     "check:env": "node scripts/checkEnv.js",
-    "start": "npm run check:env && node src/server.js",
-    "dev": "npm run check:env && node --watch src/server.js",
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
     "test": "vitest run",
+    "test:smoke": "node scripts/smokeTest.js",
     "webhook:stripe": "stripe listen --forward-to localhost:4000/api/webhooks/stripe",
     "tunnel:mp": "ngrok http 4000",
+    "tunnel:cf": "cloudflared tunnel --url http://localhost:4000",
     "verify:order": "node scripts/verifyOrder.js"
   },
   "dependencies": {
+    "@google/genai": "^3.6.1",
     "better-sqlite3": "^12.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

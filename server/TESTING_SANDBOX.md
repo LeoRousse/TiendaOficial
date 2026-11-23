@@ -4,49 +4,62 @@ Esta guía valida pagos de prueba únicamente. No uses credenciales `live`, cuen
 
 ## 1. Preparar el entorno local
 
-1. Instala Node.js 22.12+ (o Node.js 24), las dependencias y las herramientas oficiales:
+1. En PowerShell instala Node.js 22.12+ (o Node.js 24), las dependencias y las CLIs:
 
-   ```sh
+   ```powershell
+   winget install --id Stripe.StripeCli --exact
+   winget install --id Ngrok.Ngrok --exact
+   winget install --id Cloudflare.cloudflared --exact
    npm install --prefix server
    ```
 
-   Instala Stripe CLI siguiendo la [guía oficial de Stripe](https://docs.stripe.com/stripe-cli/install) e instala ngrok desde [ngrok.com/download](https://ngrok.com/download). Ejecuta `stripe login` para autorizar Stripe CLI en tu cuenta de pruebas y autentica ngrok para obtener una URL HTTPS pública. Comprueba en PowerShell con `stripe --version` y `ngrok version`.
+   Si winget no encuentra un paquete, usa las guías oficiales de [Stripe CLI](https://docs.stripe.com/stripe-cli/install), [ngrok](https://ngrok.com/download) o [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/). Ejecuta `stripe login` para autorizar Stripe CLI y `ngrok config add-authtoken <TOKEN>` solo si eliges ngrok. Cloudflare Quick Tunnel con `trycloudflare.com` no requiere cuenta.
 
-2. Copia `server/.env.example` a `server/.env`. Completa:
+2. Ejecuta el asistente de configuración:
+
+   ```powershell
+   npm run setup:env --prefix server
+   ```
+
+   Ingresa los valores disponibles y pulsa Enter para los datos que aún no tengas (como el URL temporal del túnel o `whsec_` de Stripe); puedes volver a editar `server/.env` cuando inicies las CLIs. Completa:
    - Un service account de Firebase para el mismo proyecto que usa React: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` y `FIREBASE_PRIVATE_KEY`. En `.env`, conserva la clave PEM entre comillas y los saltos `\n`; dotenv los parsea como saltos de línea y el backend normaliza el formato.
    - Credenciales sandbox `TEST-...` y la firma de webhook de Mercado Pago.
    - `sk_test_...` y el secreto de firma del listener Stripe (`whsec_...`).
    - La URL actual de ngrok en `SERVER_PUBLIC_URL`, `CLIENT_URL=http://localhost:3000` y una tasa de prueba razonable en `ARS_EXCHANGE_RATE`.
 
-   No pegues las credenciales en este documento, en el frontend ni en el repositorio. El catálogo y la conversión que cobra backend viven en `src/data/catalog.js` y `ARS_EXCHANGE_RATE`; la tasa debe ser la que quieras aplicar realmente en las pruebas.
+   El asistente crea `server/.env` si falta y oculta los valores secretos mientras los escribes. También admite opciones `--VARIABLE=valor`, pero evita pasarlas desde la terminal: pueden quedar en el historial o la lista de procesos. Para generar solo la plantilla sin prompts usa `npm run setup:env --prefix server -- --copy-only`. No pegues credenciales en este documento, el frontend ni el repositorio. Los precios del catálogo y la conversión están en `src/data/catalog.js` y `ARS_EXCHANGE_RATE`.
 
-3. Ejecuta el validador antes de arrancar:
+3. Abre tres terminales PowerShell, en este orden:
 
-   ```sh
-   npm run check:env --prefix server
+   **Terminal 1 — túnel HTTPS.** Elige un proveedor. Cloudflare Tunnel no requiere cuenta:
+
+   ```powershell
+   npm run tunnel:cf --prefix server
    ```
 
-   Enumera variables faltantes o formatos incorrectos sin imprimir sus valores. Tanto `npm start --prefix server` como `npm run dev --prefix server` lo ejecutan antes de escuchar. En `NODE_ENV=production` se omite la validación sandbox y el servidor aplica sus propias comprobaciones de configuración de producción.
+   O usa ngrok:
 
-4. Abre primero una terminal para iniciar el túnel de Mercado Pago:
-
-   ```sh
+   ```powershell
    npm run tunnel:mp --prefix server
    ```
 
-   Copia el dominio HTTPS que ngrok imprime a `SERVER_PUBLIC_URL` en `server/.env` y guarda el cambio. Este túnel puede arrancar antes de la API; esperará hasta que el servicio esté disponible en el puerto 4000.
+   Copia el dominio HTTPS asignado a `SERVER_PUBLIC_URL` en `server/.env` con el editor. Actualiza también la URL de notificaciones de Mercado Pago (se detalla abajo).
 
-5. Ejecuta `npm run check:env --prefix server` y, si pasa, arranca la API en otra terminal:
+   **Terminal 2 — Stripe CLI y webhook forwarding.**
 
-   ```sh
+   ```powershell
+   npm run webhook:stripe --prefix server
+   ```
+
+   Copia el secreto `whsec_...` que imprime a `STRIPE_WEBHOOK_SECRET` en `server/.env` con el editor. No continúes hasta que `.env` contenga el secreto correcto del listener activo.
+
+   **Terminal 3 — Express.** Ejecuta el validador y, si pasa, arranca el backend:
+
+   ```powershell
    npm start --prefix server
    ```
 
-   En una tercera terminal inicia Stripe CLI:
-
-   ```sh
-   npm run webhook:stripe --prefix server
-   ```
+   `npm run check:env` valida credenciales antes de probarlas y muestra nombres/motivos, nunca sus valores. `npm start` permite levantar el API aunque una pasarela falte: los endpoints de checkout de ese proveedor responden `503 Service Unavailable` con un mensaje de modo configuración.
 
    Comprueba `http://localhost:4000/health` (debe devolver `{"status":"ok"}`) y `http://localhost:3000`.
 
@@ -58,7 +71,17 @@ Esta guía valida pagos de prueba únicamente. No uses credenciales `live`, cuen
 
    Selecciona notificaciones de pagos. Copia el secreto de firma del webhook desde el panel de Mercado Pago a `MP_WEBHOOK_SECRET`. No uses la URL del túnel de Stripe para Mercado Pago ni publiques el endpoint con un secreto ausente.
 
-7. El comando `stripe listen` imprime un secreto local `whsec_...`. Cópialo a `STRIPE_WEBHOOK_SECRET` en `server/.env` y reinicia el backend. Mantén Stripe CLI escuchando durante todo el flujo Stripe; al reiniciar el listener, confirma si su secreto cambió. En el Dashboard de Stripe usa modo test y comprueba la suscripción al evento `checkout.session.completed` para desarrollo local mediante Stripe CLI.
+7. El comando `stripe listen` imprime un secreto local `whsec_...`. Si cambió, actualiza `STRIPE_WEBHOOK_SECRET` en `server/.env` y reinicia el backend. Mantén Stripe CLI escuchando durante el flujo Stripe; al reiniciar el listener confirma si su secreto cambió. En el Dashboard de Stripe usa modo test y comprueba la suscripción al evento `checkout.session.completed` mediante Stripe CLI.
+
+## Smoke test local
+
+Con Express iniciado y `.env` sandbox válido:
+
+```powershell
+npm run test:smoke --prefix server
+```
+
+El script prueba health, los nueve precios maestros USD/ARS y que `POST /api/orders` rechace tanto una solicitud sin `Authorization` como un token Firebase inválido. Para usar otra URL local, define `SMOKE_TEST_BASE_URL` en el entorno de esa terminal. El test no crea órdenes ni realiza pagos.
 
 ## 2. Checkout Stripe (USD)
 

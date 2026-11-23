@@ -8,6 +8,7 @@ import { getEstimatedArsAmount, USD_TO_ARS_ESTIMATE_RATE } from '../services/pay
 
 const CART_STORAGE_KEY = 'tienda-quiroga-cart';
 const EMPTY_CART = [];
+const BUNDLE_DISCOUNT_RATE = 0.15;
 
 function normalizeCart(savedCart) {
   if (!Array.isArray(savedCart)) return EMPTY_CART;
@@ -16,7 +17,18 @@ function normalizeCart(savedCart) {
   return savedCart.reduce((uniqueCourses, product) => {
     if (!product?.id || seenIds.has(product.id)) return uniqueCourses;
     seenIds.add(product.id);
-    uniqueCourses.push({ ...product, quantity: 1 });
+    const course = { ...product };
+    const listPrice = Number(course.originalPrice ?? course.price);
+    delete course.originalPrice;
+    delete course.discountPercent;
+    delete course.offerId;
+    delete course.bundleId;
+    delete course.bundleSize;
+    uniqueCourses.push({
+      ...course,
+      price: listPrice,
+      quantity: 1,
+    });
     return uniqueCourses;
   }, []);
 }
@@ -85,30 +97,27 @@ export const CartProvider = ({ children }) => {
     return true;
   };
 
-  const addRecommendedItem = (item, discountPercent = 20) => {
+  const addRecommendedItem = (item) => {
     if (isInCart(item.id) || Number(item.stock) <= 0) return false;
 
-    const originalPrice = Number(item.price);
-    const price = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
     setCart((previous) => (
       previous.some((product) => product.id === item.id)
         ? previous
-        : [...previous, {
-            ...item,
-            quantity: 1,
-            price,
-            originalPrice,
-            discountPercent,
-            offerId: 'cart-cross-sell',
-          }]
+        : [...previous, { ...item, price: Number(item.price), quantity: 1 }]
     ));
     return true;
   };
 
   const closeCartDrawer = useCallback(() => setIsCartDrawerOpen(false), []);
+  const openCartDrawer = useCallback(() => {
+    if (cart.length === 0) return false;
+    setDrawerItem(cart[cart.length - 1]);
+    setIsCartDrawerOpen(true);
+    return true;
+  }, [cart]);
 
-  const addBundle = (items, { bundleId, discountPercent }) => {
-    if (!Array.isArray(items) || items.length < 2 || !bundleId) {
+  const addBundle = (items) => {
+    if (!Array.isArray(items) || items.length < 2) {
       return { ok: false, message: "No pudimos agregar este paquete al carrito." };
     }
 
@@ -118,46 +127,20 @@ export const CartProvider = ({ children }) => {
       return { ok: false, message: "Uno o más cursos del paquete no tienen cupos disponibles." };
     }
 
-    const bundleProducts = new Map(items.map((item) => [item.id, item]));
-    const existingBundleItems = cart.filter((item) => bundleProducts.has(item.id));
-    const conflictingBundle = existingBundleItems.some(
-      (item) => item.bundleId && item.bundleId !== bundleId,
-    );
+    const distinctItems = [...new Map(items.map((item) => [item.id, item])).values()];
+    const alreadyAdded = distinctItems.every((item) => cart.some((course) => course.id === item.id));
+    if (alreadyAdded) return { ok: true, alreadyAdded: true };
 
-    if (conflictingBundle) {
-      return {
-        ok: false,
-        message: "Quita los cursos que pertenecen a otro paquete antes de agregar esta oferta.",
-      };
-    }
-
-    if (existingBundleItems.length === items.length
-      && existingBundleItems.every((item) => item.bundleId === bundleId)) {
-      return { ok: true, alreadyAdded: true };
-    }
-
-    const bundledItems = items.map((item) => {
-      const existingItem = cart.find((product) => product.id === item.id);
-      const product = existingItem || item;
-      const originalPrice = Number(existingItem?.originalPrice ?? product.price);
-      const price = Number((originalPrice * (1 - discountPercent / 100)).toFixed(2));
-
-      return {
-        ...product,
-        quantity: existingItem?.quantity ?? 1,
-        price,
-        originalPrice,
-        bundleId,
-        bundleSize: items.length,
-        discountPercent,
-      };
+    setCart((previous) => {
+      const existingIds = new Set(previous.map((item) => item.id));
+      return [
+        ...previous,
+        ...distinctItems
+          .filter((item) => !existingIds.has(item.id))
+          .map((item) => ({ ...item, price: Number(item.price), quantity: 1 })),
+      ];
     });
-
-    setCart((previous) => [
-      ...previous.filter((item) => !bundleProducts.has(item.id)),
-      ...bundledItems,
-    ]);
-    setDrawerItem(items[items.length - 1]);
+    setDrawerItem(distinctItems[distinctItems.length - 1]);
     setIsCartDrawerOpen(true);
 
     return { ok: true, alreadyAdded: false };
@@ -172,43 +155,23 @@ export const CartProvider = ({ children }) => {
   }, [setCart]);
 
   const removeItem = (itemId) => {
-    const removedItem = cart.find((product) => product.id === itemId);
     const cartUpdated = cart.filter((product) => product.id !== itemId);
-
-    if (removedItem?.bundleId) {
-      const remainingBundleItems = cartUpdated.filter(
-        (product) => product.bundleId === removedItem.bundleId,
-      );
-
-      if (remainingBundleItems.length < removedItem.bundleSize) {
-        return setCart(cartUpdated.map((product) => {
-          if (product.bundleId !== removedItem.bundleId) return product;
-
-          const standaloneProduct = { ...product, price: product.originalPrice };
-          delete standaloneProduct.bundleId;
-          delete standaloneProduct.bundleSize;
-          delete standaloneProduct.discountPercent;
-          delete standaloneProduct.originalPrice;
-          return standaloneProduct;
-        }));
-      }
-    }
 
     setCart(cartUpdated);
   };
 
   const totalQuantity = cart.reduce((acc, product) => acc + product.quantity, 0);
-  const total = cart.reduce((acc, product) => acc + product.price * product.quantity, 0);
-  const subtotalUsd = total;
-  const estimatedTotalArs = getEstimatedArsAmount(total);
-  const totalSavings = cart.reduce(
-    (acc, product) => acc + (product.bundleId
-      ? (product.originalPrice - product.price) * product.quantity
-      : (product.discountPercent && Number.isFinite(Number(product.originalPrice))
-        ? (product.originalPrice - product.price) * product.quantity
-        : 0)),
+  const subtotalCents = cart.reduce(
+    (acc, product) => acc + Math.round(Number(product.price) * 100) * product.quantity,
     0,
   );
+  const subtotalUsd = subtotalCents / 100;
+  const discountCents = cart.length >= 2
+    ? Math.round(subtotalCents * BUNDLE_DISCOUNT_RATE)
+    : 0;
+  const total = (subtotalCents - discountCents) / 100;
+  const estimatedTotalArs = getEstimatedArsAmount(total);
+  const totalSavings = discountCents / 100;
 
   return (
     <CartContext.Provider value={{
@@ -219,6 +182,7 @@ export const CartProvider = ({ children }) => {
       drawerItem,
       isCartDrawerOpen,
       closeCartDrawer,
+      openCartDrawer,
       removeItem,
       clearCart,
       isInCart,
@@ -228,6 +192,8 @@ export const CartProvider = ({ children }) => {
       usdToArsEstimateRate: USD_TO_ARS_ESTIMATE_RATE,
       totalSavings,
       totalQuantity,
+      bundleDiscountEligible: cart.length >= 2,
+      bundleDiscountPercent: BUNDLE_DISCOUNT_RATE * 100,
     }}>
       {children}
     </CartContext.Provider>

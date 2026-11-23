@@ -2,6 +2,17 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
+    <script>
+      try {
+        var savedPreferences = JSON.parse(localStorage.getItem('tienda-quiroga-preferences') || '{}');
+        var theme = savedPreferences.theme === 'dark' ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.reduceMotion = String(savedPreferences.reduceMotion === true);
+        document.documentElement.style.colorScheme = theme;
+      } catch (_) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    </script>
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#5b21b6" />

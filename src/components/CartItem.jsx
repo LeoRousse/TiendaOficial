@@ -1,7 +1,7 @@
 import { useContext } from 'react';
 import { CartContext } from './Context.jsx';
 
-const CartItem = ({ id, name, price, quantity, originalPrice, discountPercent }) => {
+const CartItem = ({ id, name, price, quantity }) => {
   const { removeItem } = useContext(CartContext);
 
   const subtotal = price * quantity;
@@ -20,12 +20,7 @@ const CartItem = ({ id, name, price, quantity, originalPrice, discountPercent })
         <div className="column">
           <p className="subtitle is-6">
             Precio x unidad (USD):{' '}
-            {originalPrice ? (
-              <>
-                <del>${originalPrice}</del>{' '}
-                <strong>${Number(price).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD ({discountPercent}% OFF)</strong>
-              </>
-            ) : `$${Number(price).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD`}
+            {`$${Number(price).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD`}
           </p>
         </div>
         <div className="column">

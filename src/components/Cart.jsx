@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { CartContext } from './Context.jsx';
 import CheckoutButtons from './CheckoutButtons.jsx';
 import { getEstimatedArsAmount } from '../services/paymentService.js';
+import BundleDiscountNotice from './BundleDiscountNotice.jsx';
 
 const Cart = () => {
   const { cart, clearCart, total, totalSavings, totalQuantity } = useContext(CartContext);
@@ -24,9 +25,13 @@ const Cart = () => {
   return (
     <div className="container mt-6">
       <div className="box">
+        <BundleDiscountNotice courseCount={cart.length} savings={totalSavings} />
         { cart.map(product => <CartItem key={product.id} {...product}/>) }
         <div className="cart-summary">
           <div>
+            <p className="cart-subtotal">
+              Subtotal: ${(total + totalSavings).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+            </p>
             {totalSavings > 0 && (
               <p className="cart-savings">
                 Ahorras ${totalSavings.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD

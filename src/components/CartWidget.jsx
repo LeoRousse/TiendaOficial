@@ -5,16 +5,20 @@ import { FaShoppingCart } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 
 const CartWidget = () => {
-  const { totalQuantity } = useContext(CartContext);
+  const { totalQuantity, openCartDrawer } = useContext(CartContext);
 
   return (
-    <Link to="/cart">
-      <div className="cart-widget" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-        <div className='badge' style={{ backgroundColor: 'red', color: 'white', padding: '0.2em 0.5em', marginLeft: '0.5em' }}>
-          Carrito
-          <FaShoppingCart /> {totalQuantity}
-        </div>
-      </div>
+    <Link
+      to="/cart"
+      className="cart-widget"
+      aria-label={`Carrito, ${totalQuantity} cursos`}
+      onClick={(event) => {
+        if (openCartDrawer()) event.preventDefault();
+      }}
+    >
+      <FaShoppingCart aria-hidden="true" />
+      <span>Carrito</span>
+      <span className="cart-widget-count" aria-live="polite">{totalQuantity}</span>
     </Link>
   );
 };

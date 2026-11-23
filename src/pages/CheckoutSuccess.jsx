@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../components/AuthContext.jsx';
 import { useCart } from '../hooks/useCart.js';
 import useOrderPolling from '../hooks/useOrderPolling.js';
 import { resolveOrderIdFromSession } from '../services/paymentService.js';
 
 function getPurchasedCourses(order) {
+  if (Array.isArray(order?.items)) {
+    return order.items
+      .map((item) => (typeof item === 'string'
+        ? { id: item, name: '' }
+        : { id: item.courseId || item.id, name: item.name || item.courseName || '' }))
+      .filter((course) => course.id);
+  }
   if (Array.isArray(order?.courses)) {
     return order.courses
       .map((course) => (typeof course === 'string'
@@ -21,14 +28,21 @@ function getPurchasedCourses(order) {
       .map((id) => ({ id, name: '' }))
       .filter((course) => course.id);
   }
-  if (Array.isArray(order?.items)) {
-    return order.items
-      .map((item) => (typeof item === 'string'
-        ? { id: item, name: '' }
-        : { id: item.courseId || item.id, name: item.name || item.courseName || '' }))
-      .filter((course) => course.id);
-  }
   return [];
+}
+
+function formatReceiptDate(value) {
+  if (!value) return 'No disponible';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'No disponible'
+    : new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
+function formatProvider(provider) {
+  if (provider === 'mercadopago') return 'Mercado Pago';
+  if (provider === 'stripe') return 'Stripe';
+  return provider || 'No informado';
 }
 
 function CheckoutSuccess() {
@@ -39,6 +53,7 @@ function CheckoutSuccess() {
   const [resolveError, setResolveError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const completionHandled = useRef(false);
+  const navigate = useNavigate();
   const { user, setPurchasedCourses } = useAuth();
   const { clearCart } = useCart();
   const polling = useOrderPolling(orderId, retryKey);
@@ -71,7 +86,12 @@ function CheckoutSuccess() {
       ...purchasedCourses.map((course) => course.id),
     ])));
     clearCart();
-  }, [clearCart, polling.order, polling.status, setPurchasedCourses]);
+    const redirectTimer = window.setTimeout(
+      () => navigate('/mis-cursos', { replace: true }),
+      2500,
+    );
+    return () => window.clearTimeout(redirectTimer);
+  }, [clearCart, navigate, polling.order, polling.status, setPurchasedCourses]);
 
   if (!user) {
     return (
@@ -97,11 +117,27 @@ function CheckoutSuccess() {
             <span className="checkout-result-icon" aria-hidden="true">✓</span>
             <h1>¡Pago confirmado!</h1>
             <p>Tu compra fue verificada. Ya puedes entrar a tus cursos.</p>
+            <dl className="checkout-receipt">
+              <div><dt>Orden</dt><dd>{polling.order?.orderId || orderId}</dd></div>
+              <div><dt>Método de pago</dt><dd>{formatProvider(polling.order?.provider)}</dd></div>
+              <div><dt>Fecha</dt><dd>{formatReceiptDate(polling.order?.updatedAt || polling.order?.createdAt)}</dd></div>
+              {Number.isFinite(Number(polling.order?.totalAmount)) && (
+                <div>
+                  <dt>Total</dt>
+                  <dd>
+                    {new Intl.NumberFormat('es-AR', {
+                      style: 'currency',
+                      currency: polling.order.currency || 'USD',
+                    }).format(polling.order.totalAmount)}
+                  </dd>
+                </div>
+              )}
+            </dl>
             {purchasedCourses.length > 0 && (
               <ul className="checkout-access-list">
                 {purchasedCourses.map((course) => (
                   <li key={course.id}>
-                    <Link to={`/item/${course.id}`}>
+                    <Link to={`/mis-cursos`}>
                       {course.name ? `Abrir ${course.name}` : 'Abrir contenido del curso'}
                     </Link>
                   </li>
@@ -139,7 +175,7 @@ function CheckoutSuccess() {
                   }
                 }}
               >
-                Volver a consultar
+                Reintentar verificación
               </button>
             ) : null}
           </>
