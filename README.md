@@ -16,6 +16,35 @@ Para habilitarlo:
 
 Si AI Logic o App Check no están configurados, el copiloto informa que no está habilitado en lugar de simular una respuesta.
 
+## Infraestructura de checkout y pagos
+
+El frontend prepara el flujo de órdenes y redirección; **no procesa pagos por sí mismo**. El servidor Express incluido en `server/` valida la identidad de Firebase, recalcula importes desde su catálogo, persiste órdenes en SQLite y solo las marca pagadas tras verificar los webhooks. Los importes enviados por el navegador nunca se usan para cobrar.
+
+Para iniciar el backend local:
+
+1. Ejecuta `npm install --prefix server`.
+2. Copia `server/.env.example` a `server/.env`, configura las credenciales de Firebase Admin y las claves de prueba de las pasarelas. Nunca guardes `server/.env` en Git.
+3. Ejecuta `npm run check:env --prefix server` y después `npm run start --prefix server`; el validador revisa las credenciales sandbox antes de que la API escuche en `http://localhost:4000`.
+4. Sigue [server/TESTING_SANDBOX.md](./server/TESTING_SANDBOX.md) para túneles y pruebas E2E; ejecuta `npm test --prefix server` para la suite. La base SQLite persiste en `server/data/orders.sqlite`; el directorio se ignora en Git.
+
+Configura un URL HTTPS público para `SERVER_PUBLIC_URL` y registra `{SERVER_PUBLIC_URL}/api/webhooks/mercadopago` en Mercado Pago y `/api/webhooks/stripe` en Stripe. Para desarrollo local, usa un túnel HTTPS. Los secretos de Admin SDK, Mercado Pago y Stripe pertenecen únicamente al backend. Configura `ARS_EXCHANGE_RATE` con la tasa que tu operación realmente aplicará y revisa los precios fuente en `server/src/data/catalog.js` antes de habilitar cobros.
+
+Los descuentos promocionales del carrito todavía no forman parte del contrato de órdenes: el servidor cobra precios del catálogo y no confía en rebajas calculadas por el navegador. No publiques una promoción como aplicable al pago hasta definir y probar su regla en el backend.
+
+Configura en `.env.local`:
+
+- `REACT_APP_API_BASE_URL`: URL base de la API; por defecto `http://localhost:4000/api`.
+- `REACT_APP_USD_ARS_ESTIMATE_RATE`: tasa indicativa para mostrar el equivalente ARS. El valor de ejemplo (`1000`) debe cambiarse por uno actual; nunca determina el importe cobrado.
+
+El backend debe autenticar el encabezado `Authorization: Bearer <Firebase ID token>` y exponer estos contratos:
+
+1. `POST /api/orders` recibe `{ "courseIds": ["..."], "userId": "...", "currency": "USD" | "ARS" }` y `Idempotency-Key`. Devuelve `{ "orderId", "status", "totalAmount", "currency", "items" }`; la misma clave y payload devuelve la misma orden. Reutilizar la clave con otro carrito devuelve `409`.
+2. `POST /api/payments/mercadopago/checkout` y `POST /api/payments/stripe/checkout` reciben `{ "orderId", "successUrl", "cancelUrl" }` y `Idempotency-Key`. Las URLs aportadas por el cliente se ignoran: el servidor usa `CLIENT_URL`. También se aceptan los aliases `/api/payments/mercadopago` y `/api/payments/stripe`. Mercado Pago devuelve `init_point`; Stripe devuelve `url`.
+3. `GET /api/orders/:orderId/status` devuelve `{ "orderId", "status", "unlockedCourseIds", "updatedAt" }`. Solo un webhook verificado puede desbloquear cursos y cambiar el estado a `paid`.
+4. Si Stripe retorna con `session_id`, `GET /api/payments/stripe/sessions/:session_id/order` devuelve `{ "orderId": "..." }`.
+
+El hook de sincronización persiste y combina el carrito de invitado con el carrito guardado para la cuenta en el mismo navegador; para sincronización entre dispositivos hace falta un endpoint autenticado del backend. La ruta `/checkout/success` consulta el estado cada 3 segundos, con un máximo de 60 segundos, y libera el acceso solo al recibir `paid`.
+
 ## Available Scripts
 
 In the project directory, you can run:

@@ -1,36 +1,40 @@
-import { useCallback, useEffect, useRef, useState, createContext } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, createContext } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/firebaseConfig.js';
+import { useAuth } from './AuthContext.jsx';
+import useCartSync from '../hooks/useCartSync.js';
+import useLocalStorage from '../hooks/useLocalStorage.js';
+import { getEstimatedArsAmount, USD_TO_ARS_ESTIMATE_RATE } from '../services/paymentService.js';
+
+const CART_STORAGE_KEY = 'tienda-quiroga-cart';
+const EMPTY_CART = [];
+
+function normalizeCart(savedCart) {
+  if (!Array.isArray(savedCart)) return EMPTY_CART;
+
+  const seenIds = new Set();
+  return savedCart.reduce((uniqueCourses, product) => {
+    if (!product?.id || seenIds.has(product.id)) return uniqueCourses;
+    seenIds.add(product.id);
+    uniqueCourses.push({ ...product, quantity: 1 });
+    return uniqueCourses;
+  }, []);
+}
 
 export const CartContext = createContext({
   cart: [],
 });
 
 export const CartProvider = ({ children }) => {
-  const [ cart, setCart ] = useState(() => {
-    try {
-      const savedCart = localStorage.getItem("tienda-quiroga-cart");
-      if (!savedCart) return [];
-
-      const savedProducts = JSON.parse(savedCart);
-      return Array.isArray(savedProducts)
-        ? savedProducts
-            .filter((product, index, products) => (
-              product?.id && products.findIndex((item) => item.id === product.id) === index
-            ))
-            .map((product) => ({ ...product, quantity: 1 }))
-        : [];
-    } catch {
-      return [];
-    }
-  });
+  const { user } = useAuth();
+  const [savedCart, setSavedCart] = useLocalStorage(CART_STORAGE_KEY, EMPTY_CART);
+  const cart = useMemo(() => normalizeCart(savedCart), [savedCart]);
+  const setCart = setSavedCart;
   const initialCartRef = useRef(cart);
   const [drawerItem, setDrawerItem] = useState(null);
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem("tienda-quiroga-cart", JSON.stringify(cart));
-  }, [cart]);
+  useCartSync(user, cart, setCart);
 
   useEffect(() => {
     let active = true;
@@ -66,7 +70,7 @@ export const CartProvider = ({ children }) => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [setCart]);
 
   const addItem = (item) => {
     if (isInCart(item.id) || Number(item.stock) <= 0) return false;
@@ -163,9 +167,9 @@ export const CartProvider = ({ children }) => {
     return cart.some((product) => product.id === itemId);
   };
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setCart( [] );
-  };
+  }, [setCart]);
 
   const removeItem = (itemId) => {
     const removedItem = cart.find((product) => product.id === itemId);
@@ -195,6 +199,8 @@ export const CartProvider = ({ children }) => {
 
   const totalQuantity = cart.reduce((acc, product) => acc + product.quantity, 0);
   const total = cart.reduce((acc, product) => acc + product.price * product.quantity, 0);
+  const subtotalUsd = total;
+  const estimatedTotalArs = getEstimatedArsAmount(total);
   const totalSavings = cart.reduce(
     (acc, product) => acc + (product.bundleId
       ? (product.originalPrice - product.price) * product.quantity
@@ -217,6 +223,9 @@ export const CartProvider = ({ children }) => {
       clearCart,
       isInCart,
       total,
+      subtotalUsd,
+      estimatedTotalArs,
+      usdToArsEstimateRate: USD_TO_ARS_ESTIMATE_RATE,
       totalSavings,
       totalQuantity,
     }}>

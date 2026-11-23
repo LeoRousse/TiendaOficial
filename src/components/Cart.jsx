@@ -3,6 +3,8 @@ import { useContext } from 'react';
 import CartItem from './CartItem.jsx';
 import { Link } from 'react-router-dom';
 import { CartContext } from './Context.jsx';
+import CheckoutButtons from './CheckoutButtons.jsx';
+import { getEstimatedArsAmount } from '../services/paymentService.js';
 
 const Cart = () => {
   const { cart, clearCart, total, totalSavings, totalQuantity } = useContext(CartContext);
@@ -27,18 +29,25 @@ const Cart = () => {
           <div>
             {totalSavings > 0 && (
               <p className="cart-savings">
-                Ahorras ${totalSavings.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                Ahorras ${totalSavings.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
               </p>
             )}
             <h3 className="title is-4 mb-0">
-              Total: ${total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+              Total: ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
             </h3>
+            <p className="cart-estimated-ars">
+              Estimado: ${getEstimatedArsAmount(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} ARS
+            </p>
           </div>
           <div className="cart-actions">
             <button className="button is-danger is-medium" onClick={() => clearCart()}>Limpiar carrito</button>
             <Link to="/checkout" className="button is-success is-medium">Continuar al pago</Link>
           </div>
         </div>
+        <section className="cart-payment-section" aria-label="Medios de pago">
+          <h2 className="title is-5">Pagar de forma segura</h2>
+          <CheckoutButtons />
+        </section>
       </div>
     </div>
   );

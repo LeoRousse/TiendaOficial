@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
@@ -16,16 +16,46 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [purchasedCourses, setPurchasedCourses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const currentUserId = useRef(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (currentUserId.current !== firebaseUser?.uid) {
+        const nextUserId = firebaseUser?.uid || null;
+        currentUserId.current = nextUserId;
+        if (!nextUserId) {
+          setPurchasedCourses([]);
+        } else {
+          try {
+            const storedCourses = localStorage.getItem(`tienda-quiroga-courses:${nextUserId}`);
+            const parsedCourses = storedCourses ? JSON.parse(storedCourses) : [];
+            setPurchasedCourses(Array.isArray(parsedCourses) ? parsedCourses : []);
+          } catch (error) {
+            console.error("No se pudieron cargar los cursos de la cuenta", error);
+            setPurchasedCourses([]);
+          }
+        }
+      }
       setUser(firebaseUser);
       setLoading(false);
     });
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    try {
+      localStorage.setItem(
+        `tienda-quiroga-courses:${user.uid}`,
+        JSON.stringify(purchasedCourses),
+      );
+    } catch (error) {
+      console.error("No se pudieron guardar los cursos de la cuenta", error);
+    }
+  }, [purchasedCourses, user?.uid]);
 
   const register = async ({ name, email, password }) => {
     const credential = await createUserWithEmailAndPassword(auth, email, password);
@@ -52,13 +82,15 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => ({
     user,
+    purchasedCourses,
+    setPurchasedCourses,
     loading,
     login,
     register,
     loginWithGoogle,
     resetPassword,
     logout,
-  }), [user, loading]);
+  }), [user, purchasedCourses, loading]);
 
   return (
     <AuthContext.Provider value={value}>
@@ -88,7 +120,13 @@ export function ProtectedRoute({ children }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}` }}
+      />
+    );
   }
 
   return children;

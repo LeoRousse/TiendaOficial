@@ -5,6 +5,28 @@ import { db } from '../firebase/firebaseConfig.js';
 import ItemList from './ItemList.jsx';
 import { getDemoProducts } from '../data/demoProducts.js';
 import { AiOutlineSearch } from 'react-icons/ai';
+import { motion } from 'framer-motion';
+
+function CatalogSkeleton() {
+  return (
+    <div className="container mt-6" aria-label="Cargando cursos" aria-busy="true">
+      <div className="columns is-multiline catalog-grid">
+        {Array.from({ length: 6 }, (_, index) => (
+          <div className="column is-one-third" key={index}>
+            <div className="catalog-skeleton" aria-hidden="true">
+              <div className="skeleton-line skeleton-title" />
+              <div className="skeleton-image" />
+              <div className="skeleton-line skeleton-price" />
+              <div className="skeleton-line skeleton-caption" />
+              <div className="skeleton-button" />
+              <div className="skeleton-button skeleton-button-secondary" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function ItemListContainer({ greeting }) {
   const [ products, setProducts ] = useState([]);
@@ -13,6 +35,9 @@ function ItemListContainer({ greeting }) {
   const [ search, setSearch ] = useState("");
 
   const { categoryId } = useParams(); 
+  const filteredProducts = products.filter((product) => (
+    product.name?.toLowerCase().includes(search.toLowerCase())
+  ));
 
   useEffect(() => {
     setLoading(true);
@@ -80,18 +105,23 @@ function ItemListContainer({ greeting }) {
         </div>
       </div>
       {loading ? (
-        <div className="has-text-centered my-6">
-          <progress className="progress is-small is-primary" max="100">Cargando</progress>
-          <p>Cargando productos...</p>
-        </div>
+        <CatalogSkeleton />
       ) : error ? (
         <div className="notification is-danger has-text-centered">{error}</div>
-      ) : products.filter((product) => product.name?.toLowerCase().includes(search.toLowerCase())).length > 0 ? (
-        <ItemList products={products.filter((product) => product.name?.toLowerCase().includes(search.toLowerCase()))} />
       ) : (
-        <div className="notification is-warning has-text-centered">
-          <p>No se encontraron productos de esta categoría.</p>
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          {filteredProducts.length > 0 ? (
+            <ItemList products={filteredProducts} />
+          ) : (
+            <div className="notification is-warning has-text-centered">
+              <p>No se encontraron productos de esta categoría.</p>
+            </div>
+          )}
+        </motion.div>
       )}
     </main>
   );

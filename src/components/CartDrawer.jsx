@@ -5,6 +5,8 @@ import { AiOutlineClose, AiOutlineShoppingCart, AiOutlineTag } from 'react-icons
 import { CartContext } from './Context.jsx';
 import { db } from '../firebase/firebaseConfig.js';
 import { getDemoProducts } from '../data/demoProducts.js';
+import CheckoutButtons from './CheckoutButtons.jsx';
+import { getEstimatedArsAmount } from '../services/paymentService.js';
 
 const DISCOUNT_PERCENT = 20;
 
@@ -64,6 +66,7 @@ function CartDrawer() {
   const [catalog, setCatalog] = useState([]);
   const [catalogState, setCatalogState] = useState('idle');
   const [upsellStatus, setUpsellStatus] = useState('');
+  const [upsellAdded, setUpsellAdded] = useState(false);
   const closeButtonRef = useRef(null);
 
   useEffect(() => {
@@ -72,6 +75,7 @@ function CartDrawer() {
     let active = true;
     setCatalogState('loading');
     setUpsellStatus('');
+    setUpsellAdded(false);
 
     getDocs(collection(db, 'items'))
       .then((snapshot) => {
@@ -126,6 +130,7 @@ function CartDrawer() {
     setUpsellStatus(added
       ? `${recommendation.name} se agregó con ${DISCOUNT_PERCENT}% de descuento.`
       : 'Este complemento ya está en tu carrito o no tiene cupos disponibles.');
+    if (added) setUpsellAdded(true);
   };
 
   return (
@@ -163,7 +168,12 @@ function CartDrawer() {
             <span className="cart-drawer-check" aria-hidden="true">✓</span>
             <div>
               <strong>¡Listo! Ya está en tu carrito.</strong>
-              <span>{totalQuantity} {totalQuantity === 1 ? 'curso' : 'cursos'} · ${total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+              <span>
+                {totalQuantity} {totalQuantity === 1 ? 'curso' : 'cursos'} · ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+              </span>
+              <span>
+                Estimado ${getEstimatedArsAmount(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })} ARS
+              </span>
             </div>
           </div>
 
@@ -176,7 +186,7 @@ function CartDrawer() {
             </p>
           )}
 
-          {recommendation && (
+          {recommendation && !upsellAdded && (
             <section className="cart-cross-sell" aria-labelledby="cart-cross-sell-title">
               <span className="cart-cross-sell-label"><AiOutlineTag /> Oferta para vos</span>
               <h3 id="cart-cross-sell-title">Completa tu aprendizaje</h3>
@@ -208,6 +218,7 @@ function CartDrawer() {
         </div>
 
         <footer className="cart-drawer-footer">
+          <CheckoutButtons compact />
           <Link className="cart-drawer-view-cart" to="/cart" onClick={closeCartDrawer}>
             Ver carrito y ofertas
           </Link>

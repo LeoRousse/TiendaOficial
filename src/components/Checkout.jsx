@@ -1,114 +1,71 @@
-import { useState, useContext } from 'react';
-import { CartContext } from './Context.jsx';
-import { collection, doc, runTransaction, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase/firebaseConfig.js';
-import CheckoutForm from './CheckoutForm.jsx';
-import { getDemoStock } from '../data/demoProducts.js';
+import { Link } from 'react-router-dom';
+import { useCart } from '../hooks/useCart.js';
+import { getEstimatedArsAmount } from '../services/paymentService.js';
+import CheckoutButtons from './CheckoutButtons.jsx';
 
 function Checkout() {
-  const [ loading, setLoading ] = useState(false);
-  const [ orderId, setOrderId ] = useState("");
-  const [ stockError, setStockError ] = useState("");
-  const { cart, total, clearCart } = useContext(CartContext);
+  const { cart, total, totalSavings, totalQuantity } = useCart();
 
-  const createOrder = async ({ name, phone, email }) => {
-    setLoading(true);
-    setStockError("");
-
-    try {
-      const objOrder = {
-        buyer: {
-          name,
-          phone,
-          email,
-        },
-        items: cart,
-        total: total,
-        date: Timestamp.fromDate(new Date()),
-      };
-      const orderRef = doc(collection(db, "orders"));
-
-      await runTransaction(db, async (transaction) => {
-        const outOfStock = [];
-
-        for (const product of cart) {
-          const productRef = doc(db, "items", product.id);
-          const productSnapshot = await transaction.get(productRef);
-
-          if (!productSnapshot.exists()) {
-            outOfStock.push(product.name);
-            continue;
-          }
-
-          const stockDb = productSnapshot.data().stock ?? 0;
-          if (stockDb < product.quantity) {
-            outOfStock.push(product.name);
-            continue;
-          }
-
-          transaction.update(productRef, { stock: stockDb - product.quantity });
-        }
-
-        if (outOfStock.length > 0) {
-          throw new Error(`OUT_OF_STOCK:${outOfStock.join(", ")}`);
-        }
-
-        transaction.set(orderRef, objOrder);
-      });
-
-      setOrderId(orderRef.id);
-      clearCart();
-    } catch (error) {
-      if (error.code === "permission-denied") {
-        const stock = getDemoStock();
-        const outOfStock = cart
-          .filter((product) => (stock[product.id] ?? 0) < product.quantity)
-          .map((product) => product.name);
-
-        if (outOfStock.length > 0) {
-          setStockError(`No hay stock suficiente para: ${outOfStock.join(", ")}.`);
-        } else {
-          cart.forEach((product) => {
-            stock[product.id] = (stock[product.id] ?? 0) - product.quantity;
-          });
-          localStorage.setItem("tienda-quiroga-demo-stock", JSON.stringify(stock));
-          setOrderId(`LOCAL-${Date.now().toString().slice(-8)}`);
-          clearCart();
-        }
-      } else if (error.message?.startsWith("OUT_OF_STOCK:")) {
-        setStockError(`No hay stock suficiente para: ${error.message.split(":").slice(1).join(":")}.`);
-      } else {
-        setStockError("No pudimos procesar la compra. Intenta nuevamente.");
-        console.error("Error al crear la orden: ", error);
-      }
-    } finally {
-       setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return <h1 className="title has-text-centered my-6">Se esta creando su orden...</h1>;
-  }
-
-  if (orderId) {
+  if (totalQuantity === 0) {
     return (
-      <div className="container has-text-centered my-6">
-        <h1 className="title">Compra confirmada</h1>
-        <div className="notification is-success">
-          El identificador de tu orden es: <strong>{orderId}</strong>
+      <main className="container">
+        <div className="box has-text-centered my-6 py-6">
+          <h1 className="title mb-3">Tu carrito está vacío</h1>
+          <p className="mb-5 has-text-grey">Agrega un curso para comenzar tu compra.</p>
+          <Link to="/" className="button is-primary is-medium">Explorar cursos</Link>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="container">
-      <h1 className="title has-text-centered">Checkout</h1>
-      <div className="box">
-        {stockError && <div className="notification is-danger">{stockError}</div>}
-        <CheckoutForm onConfirm={createOrder} disabled={cart.length === 0} />
+    <main className="container checkout-page">
+      <header className="checkout-page-heading">
+        <p>Último paso</p>
+        <h1>Finaliza tu compra</h1>
+        <span>Elige tu medio de pago. Confirmaremos tu acceso cuando el proveedor verifique el pago.</span>
+      </header>
+
+      <div className="checkout-layout">
+        <section className="checkout-order-summary" aria-labelledby="checkout-summary-title">
+          <h2 id="checkout-summary-title">Resumen de tu orden</h2>
+          <ul>
+            {cart.map((item) => (
+              <li key={item.id}>
+                <span>
+                  <strong>{item.name}</strong>
+                  {item.discountPercent && (
+                    <small>{item.discountPercent}% de descuento aplicado</small>
+                  )}
+                </span>
+                <strong>${Number(item.price).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
+              </li>
+            ))}
+          </ul>
+          {totalSavings > 0 && (
+            <p className="checkout-savings">
+              Ahorro: ${totalSavings.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+            </p>
+          )}
+          <div className="checkout-order-total">
+            <span>Total USD</span>
+            <strong>${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
+          </div>
+          <div className="checkout-order-estimate">
+            Estimado ARS: ${getEstimatedArsAmount(total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+          </div>
+          <p className="checkout-order-disclaimer">
+            La conversión a pesos es orientativa. Cada pasarela y el servidor validan el importe final.
+          </p>
+        </section>
+
+        <section className="checkout-payment-methods" aria-labelledby="checkout-payment-title">
+          <h2 id="checkout-payment-title">Métodos de pago</h2>
+          <CheckoutButtons />
+          <Link to="/cart" className="checkout-back-link">Volver al carrito</Link>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
 

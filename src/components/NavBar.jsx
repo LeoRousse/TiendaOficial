@@ -4,6 +4,7 @@ import CartWidget from './CartWidget';
 import { AiOutlineMenuUnfold, AiFillHome } from 'react-icons/ai';
 import { VscGithub } from 'react-icons/vsc';
 import { TiSocialLinkedinCircular } from 'react-icons/ti';
+import { SiUpwork } from 'react-icons/si';
 import { useAuth } from './AuthContext.jsx';
 
 const NavBar = ({ url }) => {
@@ -56,12 +57,23 @@ const NavBar = ({ url }) => {
             <CartWidget />
           </div>
 
-          <a className="navbar-item" href="https://github.com/LeoRousse" target="_blank" rel="noopener noreferrer">
+          <a className="navbar-item" href="https://github.com/LeoRousse" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
             <VscGithub size={20} className="icon-hover" />
           </a>
 
-          <a className="navbar-item" href="https://www.linkedin.com/in/devleonardoquiroga/" target="_blank" rel="noopener noreferrer">
+          <a className="navbar-item" href="https://www.linkedin.com/in/devleonardoquiroga/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
             <TiSocialLinkedinCircular size={34} className="icon-hover" />
+          </a>
+
+          <a
+            className="navbar-item upwork-link"
+            href="https://www.upwork.com/freelancers/~014314caaade486039"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Upwork"
+            title="Upwork"
+          >
+            <SiUpwork className="icon-hover upwork-logo" aria-hidden="true" />
           </a>
 
           <div className="navbar-item has-dropdown is-hoverable">

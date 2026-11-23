@@ -1,0 +1,30 @@
+{
+  "name": "tienda-quiroga-payments-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check:env": "node scripts/checkEnv.js",
+    "start": "npm run check:env && node src/server.js",
+    "dev": "npm run check:env && node --watch src/server.js",
+    "test": "vitest run",
+    "webhook:stripe": "stripe listen --forward-to localhost:4000/api/webhooks/stripe",
+    "tunnel:mp": "ngrok http 4000",
+    "verify:order": "node scripts/verifyOrder.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "firebase-admin": "^13.4.0",
+    "helmet": "^8.1.0",
+    "mercadopago": "^2.8.0",
+    "stripe": "^18.3.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.3",
+    "vitest": "^5.1.1"
+  }
+}

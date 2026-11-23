@@ -19,17 +19,17 @@ const CartItem = ({ id, name, price, quantity, originalPrice, discountPercent })
         </div>
         <div className="column">
           <p className="subtitle is-6">
-            Precio x unidad:{' '}
+            Precio x unidad (USD):{' '}
             {originalPrice ? (
               <>
                 <del>${originalPrice}</del>{' '}
-                <strong>${price} ({discountPercent}% OFF)</strong>
+                <strong>${Number(price).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD ({discountPercent}% OFF)</strong>
               </>
-            ) : `$${price}`}
+            ) : `$${Number(price).toLocaleString('en-US', { minimumFractionDigits: 2 })} USD`}
           </p>
         </div>
         <div className="column">
-          <p className="subtitle is-6">Subtotal: ${subtotal}</p>
+          <p className="subtitle is-6">Subtotal: ${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD</p>
         </div>
         <div className="column is-narrow">
           <button onClick={() => {removeItem(id)}} className="button is-danger">
